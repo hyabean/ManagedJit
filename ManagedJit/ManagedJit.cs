@@ -10,14 +10,44 @@ namespace HackCoreCLR
 {
     public class ManagedJit : IDisposable
     {
-        // Used vtable indices for ICorJitCompiler
+        //// .NETCORE 2.0
+        //// Used vtable indices for ICorJitCompiler
+        //private const int ICorJitCompiler_compileMethod_index = 0;
+        //private const int ICorJitCompiler_getVersionIdentifier_index = 4;
+
+        //// Used vtable indices for ICorJitInfo
+        //private const int ICorJitInfo_getMethodDefFromMethod_index = 105;
+        //private const int ICorJitInfo_getModuleAssembly_index = 43;
+        // The expected version matching what is actually declared in corjit.h
+        // https://github.com/dotnet/coreclr/blob/bb01fb0d954c957a36f3f8c7aad19657afc2ceda/src/inc/corinfo.h#L191-L221
+        //private static readonly Guid ExpectedJitVersion = new Guid("f00b3f49-ddd2-49be-ba43-6e49ffa66959");
+
+        // .NET 6
+        // https://github.com/dotnet/runtime/blob/release/6.0/src/coreclr/inc/corjit.h
         private const int ICorJitCompiler_compileMethod_index = 0;
-        private const int ICorJitCompiler_getVersionIdentifier_index = 4;
+        private const int ICorJitCompiler_getVersionIdentifier_index = 2;
+        // https://github.com/dotnet/runtime/blob/release/6.0/src/coreclr/inc/corinfo.h
+        public const int ICorJitInfo_getAssemblyName_index = 48; //Before was 44;
+        public const int ICorJitInfo_getModuleAssembly_index = 47; //Before was 43;
+        public const int ICorJitInfo_getMethodDefFromMethod_index = 113; //Before was 105;
+        private static readonly Guid ExpectedJitVersion = new Guid("5ed35c58-857b-48dd-a818-7c0136dc9f73");
 
-        // Used vtable indices for ICorJitInfo
-        private const int ICorJitInfo_getMethodDefFromMethod_index = 105;
-        private const int ICorJitInfo_getModuleAssembly_index = 43;
+        // .NET 7
+        //// https://github.com/dotnet/runtime/blob/release/6.0/src/coreclr/inc/corjit.h
+        //private const int ICorJitCompiler_compileMethod_index = 0;
+        //private const int ICorJitCompiler_getVersionIdentifier_index = 2; //Before was 4;
+        //// https://github.com/dotnet/runtime/blob/release/6.0/src/coreclr/inc/corinfo.h
+        //public const int ICorJitInfo_getAssemblyName_index = 46; //Before was 44;
+        //public const int ICorJitInfo_getModuleAssembly_index = 45; //Before was 43;
+        //public const int ICorJitInfo_getMethodDefFromMethod_index = 112; //Before was 105;
+        //private static readonly Guid ExpectedJitVersion = new Guid("e6a73797-0cbe-4cf8-b4ad-724a25466211");
 
+        //private static readonly byte[] DelegateTrampolineCode = {
+        //    // mov rax, 0000000000000000h ;Pointer address to _overrideCompileMethodPtr
+        //    0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        //    // jmp rax
+        //    0xFF, 0xE0
+        //};
         private static readonly byte[] DelegateTrampolineCode = {
             // mov rax, 0000000000000000h ;Pointer address to _overrideCompileMethodPtr
             0x48, 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -25,9 +55,6 @@ namespace HackCoreCLR
             0xFF, 0xE0
         };
 
-        // The expected version matching what is actually declared in corjit.h
-        // https://github.com/dotnet/coreclr/blob/bb01fb0d954c957a36f3f8c7aad19657afc2ceda/src/inc/corinfo.h#L191-L221
-        private static readonly Guid ExpectedJitVersion = new Guid("f00b3f49-ddd2-49be-ba43-6e49ffa66959");
 
         // A lock to have a single instance of our JIT
         private static readonly object JitLock;
@@ -199,7 +226,21 @@ namespace HackCoreCLR
             {
                 0x01, 0xD1, 0x89, 0xC8, 0xFF, 0xC0, 0xC3
             };
-            
+
+            // return a + b + 2;
+            //var instructions = new byte[]
+            //{
+            //    0x01, 0xD1, 0x89, 0xC8, 0xFF, 0xC0, 0xFF, 0xC0, 0xC3
+            //};
+
+            // 0:  0xB8, 0x09, 0x00, 0x00, 0x00 mov         eax,09h
+            // 5:  c3                           ret
+            // return 9;
+            //var instructions = new byte[]
+            //{
+            //    0xB8, 0x09, 0x00, 0x00, 0x00, 0xC3
+            //};
+
             Marshal.Copy(instructions, 0, nativeCodePtr, instructions.Length);
         }
 
@@ -251,7 +292,7 @@ namespace HackCoreCLR
                     {
                         if (!MapHandleToAssembly.TryGetValue(assemblyHandle, out assemblyFound))
                         {
-                            var getAssemblyNamePtr = Marshal.ReadIntPtr(vtableCorJitInfo, IntPtr.Size * 44);
+                            var getAssemblyNamePtr = Marshal.ReadIntPtr(vtableCorJitInfo, IntPtr.Size * ICorJitInfo_getAssemblyName_index);
                             var getAssemblyName = (GetAssemblyNameDelegate)Marshal.GetDelegateForFunctionPointer(getAssemblyNamePtr, typeof(GetAssemblyNameDelegate));
                             var assemblyNamePtr = getAssemblyName(comp, assemblyHandle);
 
